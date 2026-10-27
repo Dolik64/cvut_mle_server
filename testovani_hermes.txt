@@ -1,0 +1,317 @@
+#include <bits/stdc++.h>
+using namespace std;
+
+vector<vector<long long>> rowPrefix, colPrefix;
+vector<vector<vector<long long>>> leftSums;
+
+void precompute_prefixes(const vector<vector<int>>& grid) {
+    int n = grid.size();
+    rowPrefix.resize(n, vector<long long>(n + 1, 0));
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j) {
+            rowPrefix[i][j+1] = rowPrefix[i][j] + grid[i][j];
+        }
+    }
+    colPrefix.resize(n, vector<long long>(n+1, 0));
+    for (int j = 0; j < n; ++j) {
+        for (int i = 0; i < n; ++i) {
+            colPrefix[j][i+1] = colPrefix[j][i] + grid[i][j];
+        }
+    }
+}
+
+long long compute_sum(int r1, int r2, int c1, int c2) {
+    long long total = 0;
+    for (int i = r1; i <= r2; ++i) {
+        total += rowPrefix[i][c2+1] - rowPrefix[i][c1];
+    }
+    return total;
+}
+
+void precompute_left_sums(int p1, int p2) {
+    vector<vector<long long>> current(p2 - p1 + 1, vector<long long>(p2 + 2, 0));
+    for (int i = p1; i <= p2; ++i) {
+        vector<long long> row(rowPrefix[i].size());
+        for (int j = 1; j <= rowPrefix[i].size() -1; ++j) {
+            row[j] = row[j-1] + rowPrefix[i][j] - rowPrefix[i][j-1];
+        }
+        current[i - p1] = row;
+    }
+    leftSums.emplace_back(current);
+}
+
+int main() {
+    int n;
+    cin >> n;
+    vector<vector<int>> grid(n, vector<int>(n));
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j) {
+            cin >> grid[i][j];
+        }
+    }
+
+    precompute_prefixes(grid);
+
+    int min_result = INT_MAX;
+
+    for (int k = 0; k < n; ++k) {
+        long long L = compute_sum(0, k-1, 0, n-1);
+        long long R = compute_sum(k, n-1, 0, n-1);
+
+        if (k > 0) {
+            int p1 = 0, p2 = k-1;
+            precompute_left_sums(p1, p2);
+
+            long long best_L_left;
+            vector<long long>& rowSums_N = leftSums.back()[p2 - p1];
+            int northHeight = k;
+            long long target_L_left = L / 2;
+            int best_j = 0;
+            bool found = false;
+            for (int j = 0; j < n; ++j) {
+                if (rowSums_N[j] <= target_L_left) {
+                    best_j = j;
+                    found = true;
+                }
+            }
+            if (found) best_L_left = rowSums_N[best_j];
+            else best_L_left = rowSums_N[n-1];
+            long long max_L_part1 = max(best_L_left, L - best_L_left);
+
+            int best_L_right;
+            target_L_left = (L * 3) / 4;
+            best_j = n-1;
+            found = false;
+            for (int j = n-1; j >=0; --j) {
+                if (rowSums_N[j] <= target_L_left) {
+                    best_j = j;
+                    found = true;
+                }
+            }
+            if (found) best_L_right = best_j;
+            else best_L_right = n-1;
+            long long sum_right_L = rowSums_N[best_L_right];
+            long long max_L_part2 = max(sum_right_L, L - sum_right_L);
+        }
+
+        if (k < n) {
+            int p1_p2 = k;
+            int p2_north = n-1;
+            precompute_left_sums(p1_p2, p2_north);
+
+            long long best_R_left;
+            vector<long long>& rowSums_S = leftSums.back()[p2_north - p1_p2];
+            long long target_R_left = R / 2;
+            int best_j = 0;
+            bool found = false;
+            for (int j = 0; j < n; ++j) {
+                if (rowSums_S[j] <= target_R_left) {
+                    best_j = j;
+                    found = true;
+                }
+            }
+            if (found) best_R_left = rowSums_S[best_j];
+            else best_R_left = rowSums_S[n-1];
+            long long max_R_part1 = max(best_R_left, R - best_R_left);
+
+            int best_R_right;
+            target_R_left = (R * 3)/4;
+            best_j = n-1;
+            found = false;
+            for (int j = n-1; j >=0; --j) {
+                if (rowSums_S[j] <= target_R_left) {
+                    best_j = j;
+                    found = true;
+                }
+            }
+            if (found) best_R_right = best_j;
+            else best_R_right = n-1;
+            long long sum_right_R = rowSums_S[best_R_right];
+            long long max_R_part2 = max(sum_right_R, R - sum_right_R);
+        }
+
+        int current_max = max(max_L_part1, max_L_part2);
+        int current_maxS = max(max_R_part1, max_R_part2);
+        int current_min = min(min(max_L_part1, max_L_part2), min(max_R_part1, max_R_part2));
+        int candidate = current_max - current_min;
+
+        if (candidate < min_result) {
+            min_result = candidate;
+        }
+
+        leftSums.clear();
+    }
+
+    cout << min_result << endl;
+
+    return 0;
+}
+
+
+To solve this problem, we need to divide a square orchard into four rectangular parts using three vertical paths such that the maximum difference between the sums of the qualities of any two parts is minimized.
+
+### Approach
+1. **Prefix Sums Calculation**: Compute prefix sums for each row and column to efficiently calculate the sum of any submatrix in the grid.
+2. **Iterate Over Possible Splits**: For each possible vertical split of the grid into northern and southern parts:
+   - Calculate the sum of each part.
+   - Determine the best horizontal splits for both the northern and southern parts to minimize the maximum difference between the four resulting parts.
+3. **Efficient Splits Calculation**: For each part, precompute possible sums of left parts and track the rightmost left sum that is less than a given target to quickly find optimal splits.
+
+### Solution Code
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+
+vector<vector<long long>> rowPrefix, colPrefix;
+vector<vector<vector<long long>>> leftSums;
+
+void precompute_prefixes(const vector<vector<int>>& grid) {
+    int n = grid.size();
+    rowPrefix.resize(n, vector<long long>(n + 1, 0));
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j) {
+            rowPrefix[i][j+1] = rowPrefix[i][j] + grid[i][j];
+        }
+    }
+    colPrefix.resize(n, vector<long long>(n+1, 0));
+    for (int j = 0; j < n; ++j) {
+        for (int i = 0; i < n; ++i) {
+            colPrefix[j][i+1] = colPrefix[j][i] + grid[i][j];
+        }
+    }
+}
+
+long long compute_sum(int r1, int r2, int c1, int c2) {
+    long long total = 0;
+    for (int i = r1; i <= r2; ++i) {
+        total += rowPrefix[i][c2+1] - rowPrefix[i][c1];
+    }
+    return total;
+}
+
+void precompute_left_sums(int p1, int p2) {
+    vector<vector<long long>> current(p2 - p1 + 1, vector<long long>(p2 + 2, 0));
+    for (int i = p1; i <= p2; ++i) {
+        vector<long long> row(rowPrefix[i].size());
+        for (int j = 1; j <= rowPrefix[i].size() -1; ++j) {
+            row[j] = row[j-1] + rowPrefix[i][j] - rowPrefix[i][j-1];
+        }
+        current[i - p1] = row;
+    }
+    leftSums.emplace_back(current);
+}
+
+int main() {
+    int n;
+    cin >> n;
+    vector<vector<int>> grid(n, vector<int>(n));
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j) {
+            cin >> grid[i][j];
+        }
+    }
+
+    precompute_prefixes(grid);
+
+    int min_result = INT_MAX;
+
+    for (int k = 0; k < n; ++k) {
+        long long L = compute_sum(0, k-1, 0, n-1);
+        long long R = compute_sum(k, n-1, 0, n-1);
+
+        if (k > 0) {
+            int p1 = 0, p2 = k-1;
+            precompute_left_sums(p1, p2);
+
+            long long best_L_left;
+            vector<long long>& rowSums_N = leftSums.back()[p2 - p1];
+            int northHeight = k;
+            long long target_L_left = L / 2;
+            int best_j = 0;
+            bool found = false;
+            for (int j = 0; j < n; ++j) {
+                if (rowSums_N[j] <= target_L_left) {
+                    best_j = j;
+                    found = true;
+                }
+            }
+            if (found) best_L_left = rowSums_N[best_j];
+            else best_L_left = rowSums_N[n-1];
+            long long max_L_part1 = max(best_L_left, L - best_L_left);
+
+            int best_L_right;
+            target_L_left = (L * 3) / 4;
+            best_j = n-1;
+            found = false;
+            for (int j = n-1; j >=0; --j) {
+                if (rowSums_N[j] <= target_L_left) {
+                    best_j = j;
+                    found = true;
+                }
+            }
+            if (found) best_L_right = best_j;
+            else best_L_right = n-1;
+            long long sum_right_L = rowSums_N[best_L_right];
+            long long max_L_part2 = max(sum_right_L, L - sum_right_L);
+        }
+
+        if (k < n) {
+            int p1_p2 = k;
+            int p2_north = n-1;
+            precompute_left_sums(p1_p2, p2_north);
+
+            long long best_R_left;
+            vector<long long>& rowSums_S = leftSums.back()[p2_north - p1_p2];
+            long long target_R_left = R / 2;
+            int best_j = 0;
+            bool found = false;
+            for (int j = 0; j < n; ++j) {
+                if (rowSums_S[j] <= target_R_left) {
+                    best_j = j;
+                    found = true;
+                }
+            }
+            if (found) best_R_left = rowSums_S[best_j];
+            else best_R_left = rowSums_S[n-1];
+            long long max_R_part1 = max(best_R_left, R - best_R_left);
+
+            int best_R_right;
+            target_R_left = (R * 3)/4;
+            best_j = n-1;
+            found = false;
+            for (int j = n-1; j >=0; --j) {
+                if (rowSums_S[j] <= target_R_left) {
+                    best_j = j;
+                    found = true;
+                }
+            }
+            if (found) best_R_right = best_j;
+            else best_R_right = n-1;
+            long long sum_right_R = rowSums_S[best_R_right];
+            long long max_R_part2 = max(sum_right_R, R - sum_right_R);
+        }
+
+        int current_max = max(max_L_part1, max_L_part2);
+        int current_maxS = max(max_R_part1, max_R_part2);
+        int current_min = min(min(max_L_part1, max_L_part2), min(max_R_part1, max_R_part2));
+        int candidate = current_max - current_min;
+
+        if (candidate < min_result) {
+            min_result = candidate;
+        }
+
+        leftSums.clear();
+    }
+
+    cout << min_result << endl;
+
+    return 0;
+}
+```
+
+### Explanation
+1. **Prefix Sums**: The `rowPrefix` and `colPrefix` arrays are used to quickly compute the sum of any submatrix. This allows us to efficiently calculate the sum of the northern and southern parts after each vertical split.
+2. **Vertical Splits**: For each possible vertical split point `k`, we compute the sum of the northern (first `k` rows) and southern (remaining rows) parts.
+3. **Horizontal Splits**: For each part (northern and southern), we determine the best horizontal split points that minimize the maximum difference between the resulting parts. This involves finding the rightmost column where the sum of the left part is closest to half of the total sum of the respective part.
+4. **Optimal Splits**: The minimum difference between the highest and lowest parts is tracked and updated as we iterate through all possible vertical splits, ensuring we find the optimal division.
+
