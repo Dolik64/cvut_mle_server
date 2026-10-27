@@ -1,0 +1,273 @@
+thakurav github je ten indicky pan
+
+ssh -i ~/.ssh/fel_gpu_ctu dolezj48@gpu.fel.cvut.cz
+
+module -t avail 2>&1 | grep -E '^(Python|Transformers|vLLM|Singularity|Apptainer)/'
+
+
+
+
+tady je jen info o modelu ktery jsem pouzival
+
+module load vLLM/0.10.0-foss-2024a-CUDA-12.6.0
+module load typing-extensions/4.11.0-GCCcore-13.3.0
+
+export LLM_WORK="/local/temporary/dolezj48/llm-12540"
+export HF_HOME="$LLM_WORK/huggingface"
+export XDG_CACHE_HOME="$LLM_WORK/cache"
+export TMPDIR="$LLM_WORK/tmp"
+export VLLM_CACHE_ROOT="$LLM_WORK/vllm-cache"
+export OMP_NUM_THREADS=4
+export HF_HUB_OFFLINE=1
+
+source "$LLM_WORK/venv/bin/activate"
+cd "$LLM_WORK"
+
+export MODEL_PATH="$HF_HOME/hub/models--NousResearch--Hermes-4-70B/snapshots/d5dec2bd6b3930a09ddefd0b7fc6523fe0720d09"
+
+python -m vllm.entrypoints.openai.api_server \
+  --model "$MODEL_PATH" \
+  --served-model-name hermes \
+  --host 127.0.0.1 \
+  --port 8000 \
+  --tensor-parallel-size 8 \
+  --pipeline-parallel-size 2 \
+  --distributed-executor-backend mp \
+  --dtype bfloat16 \
+  --max-model-len 8192 \
+  --max-num-seqs 2 \
+  --gpu-memory-utilization 0.90 \
+  --enforce-eager \
+  --disable-custom-all-reduce \
+  2>&1 | tee "$LLM_WORK/server-$SLURM_JOB_ID.log"
+  
+  
+  
+  
+  
+  
+  
+  tady je alokace casu
+  
+  srun --partition=fast --nodelist=gpu1 \
+  --nodes=1 --ntasks=1 --cpus-per-task=96 \
+  --exclusive --gres=gpu:a16:16 --mem=0 \
+  --time=04:00:00 --pty bash -l
+  
+  
+  
+  
+  
+  FEL GPU – SPUŠTĚNÍ HERMESU A CHATU
+
+DŮLEŽITÉ
+- pop-os = můj notebook.
+- gpu = přihlašovací server; model tady nespouštět.
+- gpu1 = výpočetní server se staženým modelem.
+- Z domova nejprve zapnout FEL VPN. Na školní síti není potřeba.
+- Příkazy vkládat postupně podle kroků.
+
+
+1. PŘIPOJENÍ NA ŠKOLNÍ SERVER
+
+Na notebooku otevřít terminál a spustit:
+
+ssh -i ~/.ssh/fel_gpu_ctu -o ServerAliveInterval=30 -o ServerAliveCountMax=3 dolezj48@gpu.fel.cvut.cz
+
+
+2. ZKONTROLOVAT EXISTUJÍCÍ REZERVACE
+
+Na serveru gpu spustit:
+
+squeue -u "$USER" -o "%.18i %.9T %.10M %.10L %N"
+
+Pokud žádná úloha neběží, pokračovat krokem 3.
+Pokud už mám běžící rezervaci na gpu1, nevytvářet další.
+Připojení k existující rezervaci je popsané na konci.
+
+
+3. REZERVOVAT CELÝ GPU1 NA 4 HODINY
+
+Na serveru gpu spustit:
+
+srun --partition=fast --nodelist=gpu1 \
+  --nodes=1 --ntasks=1 --cpus-per-task=96 \
+  --exclusive --gres=gpu:a16:16 --mem=0 \
+  --time=04:00:00 --pty bash -l
+
+Pokud vypíše „queued and waiting for resources“, čekat.
+Pokračovat až po zobrazení dolezj48@gpu1.
+
+
+4. OVĚŘIT SERVER A ULOŽENÉ PROSTŘEDÍ
+
+hostname
+echo "$SLURM_JOB_ID"
+ls /local/temporary/dolezj48/llm-12540/venv/bin/activate
+
+Musí se vypsat gpu1, číslo současné úlohy a cesta bez chyby.
+
+Složka llm-12540 je původní složka s instalací.
+Číslo v této cestě NEMĚNIT podle nové rezervace.
+
+Pokud soubor neexistuje, nepokračovat. Local scratch se
+pravidelně čistí a může být potřeba prostředí obnovit.
+
+
+5. NAČÍST PROSTŘEDÍ NA GPU1
+
+module load vLLM/0.10.0-foss-2024a-CUDA-12.6.0
+module load typing-extensions/4.11.0-GCCcore-13.3.0
+
+export LLM_WORK="/local/temporary/dolezj48/llm-12540"
+export HF_HOME="$LLM_WORK/huggingface"
+export XDG_CACHE_HOME="$LLM_WORK/cache"
+export TMPDIR="$LLM_WORK/tmp"
+export VLLM_CACHE_ROOT="$LLM_WORK/vllm-cache"
+export OMP_NUM_THREADS=4
+export HF_HUB_OFFLINE=1
+
+source "$LLM_WORK/venv/bin/activate"
+cd "$LLM_WORK"
+
+export MODEL_PATH="$HF_HOME/hub/models--NousResearch--Hermes-4-70B/snapshots/d5dec2bd6b3930a09ddefd0b7fc6523fe0720d09"
+
+
+6. SPUSTIT MODEL NA GPU1
+
+Pokud model v této rezervaci už běží, tento krok neopakovat.
+
+python -m vllm.entrypoints.openai.api_server \
+  --model "$MODEL_PATH" \
+  --served-model-name hermes \
+  --host 127.0.0.1 \
+  --port 8000 \
+  --tensor-parallel-size 8 \
+  --pipeline-parallel-size 2 \
+  --distributed-executor-backend mp \
+  --dtype bfloat16 \
+  --max-model-len 8192 \
+  --max-num-seqs 2 \
+  --gpu-memory-utilization 0.90 \
+  --enforce-eager \
+  --disable-custom-all-reduce \
+  2>&1 | tee "$LLM_WORK/server-$SLURM_JOB_ID.log"
+
+Počkat na:
+Application startup complete.
+
+Tento terminál nechat otevřený.
+
+
+7. VYTVOŘIT SSH TUNEL Z NOTEBOOKU
+
+Otevřít NOVÝ terminál přes Ctrl+Alt+T.
+Musí v něm být jirkadolezal@pop-os, nikoli dolezj48@gpu.
+
+ssh -N \
+  -i ~/.ssh/fel_gpu_ctu \
+  -o 'ProxyCommand=ssh -i ~/.ssh/fel_gpu_ctu -W %h:%p dolezj48@gpu.fel.cvut.cz' \
+  -o ExitOnForwardFailure=yes \
+  -o ServerAliveInterval=30 \
+  -o ServerAliveCountMax=3 \
+  -L 127.0.0.1:8000:127.0.0.1:8000 \
+  dolezj48@gpu1
+
+Pokud běží bez výpisu, je to normální.
+Tento terminál také nechat otevřený.
+Pokud tunel už běží, nespouštět druhý na stejném portu.
+
+
+8. OVĚŘIT SPOJENÍ A ZAPNOUT CHAT
+
+Otevřít DALŠÍ místní terminál na notebooku:
+
+curl --silent --show-error http://127.0.0.1:8000/v1/models
+
+Ve výstupu má být model hermes.
+
+Spustit již vytvořený kontejner:
+
+sudo docker start hermes-chat
+
+V prohlížeči otevřít:
+
+http://localhost:3000
+
+Přihlásit se místním účtem Open WebUI a vybrat hermes.
+Historie chatů je uložená na notebooku v Docker svazku
+hermes-chat-data.
+
+
+POKUD CHAT HLÁSÍ CHYBU „auto tool choice requires…“
+
+Open WebUI požaduje nástroje, které server nemá zapnuté.
+Pro obyčejný chat vypnout Builtin Tools v nastavení modelu.
+Předchozí řešení této chyby ještě nebylo potvrzené jako funkční.
+Samotný model jsme úspěšně ověřili přes API.
+
+
+OPĚTOVNÉ PŘIPOJENÍ K EXISTUJÍCÍ REZERVACI
+
+Po novém SSH přihlášení jsem vždy nejprve na gpu.
+
+Zjistit číslo úlohy:
+
+squeue -u "$USER"
+
+Pokud úloha stále běží na gpu1, nahradit CISLO_ULOHY:
+
+srun --jobid=CISLO_ULOHY --overlap \
+  --nodes=1 --ntasks=1 --cpus-per-task=96 \
+  --gres=gpu:a16:16 --pty bash -l
+
+Tím otevřu další shell v existující rezervaci.
+Neobnoví se tím původní terminál ani jeho proměnné.
+Pokud model už běží, znovu ho nespouštět.
+
+
+UKONČENÍ
+
+Na gpu zjistit číslo vlastní rezervace:
+
+squeue -u "$USER"
+
+Ukončit ji příkazem s jejím skutečným číslem:
+
+scancel CISLO_ULOHY
+
+Tím se zastaví i model a uvolní server.
+V terminálu s SSH tunelem stisknout Ctrl+C.
+
+Volitelně zastavit chatovací rozhraní na notebooku:
+
+sudo docker stop hermes-chat
+
+Historie chatů zůstane uložená.
+
+
+CO SI PAMATOVAT
+
+- Čtyřhodinový limit běží od přidělení serveru.
+- Po limitu model skončí; další použití potřebuje novou rezervaci.
+- Instalace se neopakuje, pokud soubory na gpu1 zůstaly.
+- Local scratch není trvalé úložiště.
+- Zavření SSH, uspání notebooku nebo změna sítě mohou
+  přerušit tuto interaktivní relaci; tento postup nezajišťuje
+  běh odolný proti odpojení.
+- Správce školního serveru může technicky získat přístup
+  k dotazům zpracovávaným modelem.
+  
+  
+  
+  
+  
+  
+  Teď můžeš znovu spustit sledování:
+tail -n 40 -F "$HOME/qwen-logs/qwen-12571.log"
+
+Po přidělení serveru se log vytvoří a model začne automaticky načítat. Hláška o zatím neexistujícím souboru je během čekání očekávaná.
+
+
+
+  
